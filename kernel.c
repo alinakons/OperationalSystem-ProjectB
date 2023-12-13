@@ -1,3 +1,4 @@
+
 //made by Alina Poklad and Shantala Gaitonde
 
 void printString(char*);
@@ -5,29 +6,50 @@ void printChar(char c);
 void readString(char*);
 void readSector(char*,int);
 void handleInterrupt21(int, int, int, int);
-
+void readFile(char*, char*, int*);
+void executeProgram(char* name);
+void terminateProgram();
+void writeSector(char*,int);
+void deleteFile(char*);
+void writeFile(char* , char* , int);
 
 void main() {
 
-char line[80];
-char buffer[512];
+//char line[80];
+//char buffer[512];
 
 //printString("Hello World\0");
-
-printString("Enter a line: ");
+//printString("Project C");
+//printString("Enter a line: ");
 //readString(line);;
 //printString(line);
 //readSector(buffer, 30);
 //printString(buffer);
 
-makeInterrupt21();
-interrupt(0x21,1,line,0,0);
-interrupt(0x21,0,line,0,0);
+//makeInterrupt21();
+//interrupt(0x21,1,line,0,0);
+//interrupt(0x21,0,line,0,0);
 //readSector(buffer, 30);
 //printString(buffer);
-interrupt(0x21,2,buffer,30,0);
-interrupt(0x21, 0,buffer,0,0);
-while(1);
+//interrupt(0x21,2,buffer,30,0);
+//interrupt(0x21, 0,buffer,0,0);
+
+char buffer[13312];
+int sectorsRead;
+//printString("here");
+makeInterrupt21();
+/*interrupt(0x21, 3, "messag", buffer, &sectorsRead);
+if (sectorsRead>0)
+	interrupt(0x21, 0, buffer, 0, 0);
+else
+	interrupt(0x21, 0, "messag not found\r\n", 0, 0);*/
+
+//interrupt(0x21, 4, "tstpr1", 0, 0);
+//printChar('b');
+//interrupt(0x21,8,"this is a test message","testmg",3);
+//printChar('a');
+interrupt(0x21,4,"shell",0,0);
+while(1); 
 }
 
 void printString(char* chars)
@@ -106,8 +128,180 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
         }
         else if(ax==2) {
           readSector(bx, cx);
-        } 
-        else {
-            printString("Error");
         }
+	else if(ax==3){
+	  readFile(bx, cx, dx);
+	}
+	else if(ax==4) {
+	 executeProgram((char*)bx);
+	}
+	else if(ax==5) {
+	terminateProgram();
+	}
+	else if(ax==6) {
+	writeSector(bx,cx);
+	}
+	else if(ax==7) {
+		deleteFile(bx);
+	}
+	else if(ax==8) {
+		writeFile(bx,cx,dx);
+	}
+        else {
+         printString("Error");
+        }
+}
+
+void readFile (char* filename , char* buffer, int* numOfSectors)
+{
+     int fileEntry=0;
+     int fileFound = 0;
+     int i=0;
+     char directory[512];
+     readSector(directory,2);
+ for ( fileEntry=0; fileEntry<512; fileEntry+=32)
+  	{
+ 	if ( filename[0]==directory[fileEntry] && filename[1]==directory[fileEntry+1]
+ && filename[2]==directory[fileEntry+2] && filename[3]==directory[fileEntry+3] 
+ && filename[4]==directory[fileEntry+4] && filename[5]==directory[fileEntry+5]
+ )
+{
+	*numOfSectors = 0;
+	fileFound = 1;
+ 	  for(i=6 ; i<32; i++)
+		{
+		if(directory[fileEntry+i]!=0 )
+		{
+		readSector(buffer + (*numOfSectors) * 512, directory[fileEntry+i]);
+		//buffer=buffer+512;
+		(*numOfSectors)++;
+		}
+		else
+		{
+		break;
+		}
+      	  }
+		break;
+	}
+   }
+	if(!fileFound) {
+		*numOfSectors = 0;
+		return;
+	}
+}
+
+void executeProgram(char* name)
+{	int i = 0;
+	char buffer[13312]; 
+	int numSectors;
+	int segment = 0x2000;
+	int address;
+	readFile(name,buffer,&numSectors);
+	//printChar(char *(numSectors));
+	for(i=0;i<numSectors * 512;i++) {
+		putInMemory(0x2000,i,buffer[i]);
+	}
+	launchProgram(segment);
+}
+
+void terminateProgram()
+{
+	char shellname[6]; 
+	shellname[0] = 's';
+	shellname[1] = 'h';
+	shellname[2] = 'e';
+	shellname[3] = 'l';
+	shellname[4] = 'l';
+	shellname[5] = '\0';
+
+	executeProgram(shellname);
+}
+
+void writeSector(char* buffer, int sector)
+{
+	int AX = 3*256+1;
+        int BX = buffer;
+        int CX = 0*256+(sector+1);
+        int DX = 0*256+0x80;
+        interrupt(0x13, AX, BX, CX, DX);
+
+}
+
+void deleteFile(char* filename)
+{
+	char directory[512];
+	char map[512];
+	int i,fileEntry;
+	readSector(directory,2);
+	readSector(map,1);
+	for(fileEntry=0;fileEntry<512;fileEntry+=32) {
+		if (filename[0]==directory[fileEntry] && filename[1]==directory[fileEntry+1] && filename[2]==directory[fileEntry+2] 
+&& filename[3]==directory[fileEntry+3] && filename[4]==directory[fileEntry+4] && filename[5]==directory[fileEntry+5]) {
+		printChar('H');
+		directory[fileEntry+0] = '\0';
+		for(i=6 ; i<32; i++) {
+			if(directory[fileEntry+i] !=0) {
+				map[directory[fileEntry+i]] = 0;
+				directory[fileEntry+i] = 0;
+			} 
+			
+		}
+
+		}
+
+	}
+	writeSector(directory,2);
+	writeSector(map,1);
+}
+
+void writeFile(char* buffer, char* filename, int numberOfSectors)
+{
+	char directory[512];
+        char map[512];
+	int fileEntry,i,dirIndex,j;
+	char* tempBuffer;
+	int bufferIndex = 0;
+	
+	readSector(directory,2);
+	readSector(map,3);
+	printChar('e');
+	 for(fileEntry=0;fileEntry<512;fileEntry+=32) {
+		if(directory[fileEntry] == '\0') {
+			for(i=0;i<6;i++) {
+				directory[fileEntry+i] = '\0';
+			}
+			for(i=0;i<6;i++) {
+				if(filename[i] == '\0') 
+					break;
+				directory[fileEntry+i] = filename[i];
+			}
+			dirIndex = fileEntry + 6;
+			for(i=3;i<256;i++) {
+	
+        			if(numberOfSectors == 0){
+					break;}
+				if(map[i] == 0) {
+					map[i] == 0xFF;
+					directory[dirIndex] = i;
+					dirIndex++;
+					numberOfSectors--;
+					for(j=0;j<512;j++) {
+						tempBuffer[j] = buffer[bufferIndex+j];
+					}
+					bufferIndex+=512;
+					writeSector(tempBuffer,i);
+				}
+
+			}
+			if(numberOfSectors!=0) {
+				return;
+			}
+			for(i=dirIndex;i<32;i++){
+				directory[dirIndex] = '\0';
+			}
+			writeSector(directory,2);
+			writeSector(map,3);
+			return;
+		}
+	}
 }
