@@ -1,4 +1,4 @@
-All steps are done
-run exec number
-run dir or kill1
+All steps are done.
+run exec number.
+run dir or kill1.
 
